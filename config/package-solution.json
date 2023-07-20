@@ -1,0 +1,13 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "drop-off-lib-client-side-solution",
+    "id": "b9b5a5ef-0450-4444-ad85-14a344ba915f",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true
+  },
+  "paths": {
+    "zippedPackage": "solution/drop-off-lib.sppkg"
+  }
+}

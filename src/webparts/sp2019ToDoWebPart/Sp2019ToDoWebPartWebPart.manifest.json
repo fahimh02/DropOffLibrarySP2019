@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx/client-side-web-part-manifest.schema.json",
+  "id": "2a180d90-7ede-4444-a9c3-c6f69ee2986b",
+  "alias": "Sp2019ToDoWebPartWebPart",
+  "componentType": "WebPart",
+  "version": "*",
+  "manifestVersion": 2,
+  "requiresCustomScript": false,
+  "preconfiguredEntries": [{
+    "groupId": "5c03119e-3074-46fd-976b-c60198311f70",
+    "group": { "default": "SPFx Custom WebParts" },
+    "title": { "default": "Drop off Library" },
+    "description": { "default": "Manage files in a drop of lib" },
+    "officeFabricIconFontName": "DocumentSet",
+    "properties": {
+    }
+  }]
+}

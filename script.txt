@@ -1,0 +1,11 @@
+file upload is not uploading the actual file
+move is not working
+check if solution can b deploy correctly
+https://github.com/SharePoint/sp-dev-docs/blob/main/docs/sp-add-ins/upload-a-file-by-using-the-rest-api-and-jquery.md
+
+npm uninstall jquery@3.4.1 --save
+
+Review
+
+After moving a file, it kees loading
+Save file with Division value

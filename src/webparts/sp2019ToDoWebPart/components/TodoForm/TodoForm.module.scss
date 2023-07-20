@@ -1,0 +1,35 @@
+.todoForm {
+    display: table;
+
+ .uploadbutton {
+      background-color: #0078d4;
+      color: #ffffff;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+    
+    .uploadbutton:hover {
+      background-color: #005a9e;
+    }
+    .textField {
+      display: table-cell;
+      width: 100%;
+
+      input {
+        min-width: 80px;
+      }
+    }
+    .addButtonCell {
+      display: table-cell;
+      vertical-align: top;
+
+      .addButton {
+        margin-left: 10px;
+        white-space: nowrap;
+        height: 32px;
+      }
+    }
+  }

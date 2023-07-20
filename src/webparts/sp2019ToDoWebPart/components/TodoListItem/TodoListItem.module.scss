@@ -1,0 +1,128 @@
+@import "~@microsoft/sp-office-ui-fabric-core/dist/sass/SPFabricCore.scss";
+.rowcontainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.infocontainer {
+  flex-grow: 1;
+  margin-right: 20px;
+}
+
+.buttoncontainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 1rem;
+}
+
+button {
+  padding: 8px 16px;
+  background-color: #0078d4;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .infocontainer {
+    margin-right: 0;
+    margin-bottom: 20px;
+    flex-basis: 100%;
+  }
+
+  .buttoncontainer {
+    justify-content: flex-start;
+  }
+}
+.customdropdown{
+  padding-top: 5px;
+  padding-bottom: 5px;
+  width: 200px; 
+}
+.filenamelabel {
+  width: 100%;
+  font-weight: 550;
+  margin-left: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filenamelink{
+  color: rgba(2, 136, 245, 0.966);
+  text-decoration: auto;
+}
+
+.todoListItem {
+  padding: 8px 10px 8px;
+  
+
+
+
+
+
+
+
+
+
+
+
+
+    //border: 1px $ms-color-neutralTertiaryAlt solid;
+    border-bottom: 0.5px solid;
+    border-color: #848484;
+    margin-top: -1px;
+    
+    .itemTaskRow {
+      padding: 5px 10px 4px ;
+      @media (max-width: 600px) {
+        padding: 8px 20px 8px 4px;
+      }
+      
+    }
+    .buttonright{
+      text-align: right;
+    }
+    .deletebutton {
+      margin-left: auto;
+      background-color: #939393;
+      color: white;
+      border: none;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .deletebutton:hover {
+      background-color:#a3a3a3; 
+    }
+    
+    .deletebutton:active {
+      background-color: #a3a3a3;
+    }
+
+
+    .editbutton {
+      margin-left: auto;
+  background-color: #009ee0;
+  color: white;
+  margin-right: 10px;
+  border: none;
+  padding: 8px 16px;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 14px;
+  cursor: pointer;
+    }.editbutton:hover {
+      background-color: #03b2fd;
+    }
+    
+    .editbutton:active {
+      background-color:  #03b2fd;
+    }
+    
+
+    
+  }
