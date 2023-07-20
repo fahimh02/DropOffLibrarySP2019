@@ -6,7 +6,7 @@ Solution contains two components:
 
 ## To do web part
 
-![Animated gif demonstrating the to do web part](./assets/todo-basic-demo.gif)
+
 
 > The To do web part is an adaptation of the [web part originally built by Chakkaradeep Chandran](https://github.com/SharePoint/sp-dev-fx-webparts/tree/master/samples/react-todo-basic) to work on SharePoint Server 2019.
 
