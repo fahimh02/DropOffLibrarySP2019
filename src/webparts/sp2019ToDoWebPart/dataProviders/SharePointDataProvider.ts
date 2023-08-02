@@ -972,7 +972,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       if (response.ok) {
         const user = await response.json();
         const groups = user.Groups;
-        const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("member") ||   item.Title.toLowerCase().includes("owner") )[0];
+        const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("member") ||   item.Title.toLowerCase().includes("owner") || item.Title.toLowerCase().includes("visitor"))[0];
         if(filteredList!=undefined){
           return true;
         }
