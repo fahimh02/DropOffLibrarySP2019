@@ -9,6 +9,12 @@ import ITodoDataProvider from '../dataProviders/ITodoDataProvider';
 import ITodoItem from '../models/ITodoItem';
 import ITodoTaskList from '../models/ITodoTaskList';
 import Swal from 'sweetalert';
+import * as JQuery from 'jquery';
+import { Web ,sp,Folder ,FolderAddResult} from "@pnp/sp";
+import { Item, ItemAddResult, ItemUpdateResult } from '@pnp/sp';
+import { resultContent } from 'office-ui-fabric-react/lib-es2015/components/pickers/PeoplePicker/PeoplePicker.scss';
+
+//import { Web ,sp,Folder} from '@pnp/sp/presets/all';
 export default class SharePointDataProvider implements ITodoDataProvider {
   private _selectedList: ITodoTaskList;
   private _taskLists: ITodoTaskList[];
@@ -35,16 +41,85 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     this.apparalListUrl = "/contract_mgmt/cd/Customer%20Documents%20Apparel";
     this.techtexListUrl = "/contract_mgmt/cd/Customer%20Documents%20%20Techtex";
     this.automotiveListUrl = "/contract_mgmt/cd/Customer%20Documents%20%20Automotive"; //prod
+    sp.setup({
+      sp: {
+        baseUrl: "http://intranet.amann.com/contract_mgmt/cd"
+      }
+    });
 
   }
+  public async getFolderDetail(listUrl:string,targetFolderName:string,contentTypeId:string) {
+    sp.setup({
+      sp: {
+        baseUrl: "http://intranet.amann.com/contract_mgmt/cd"
+      }
+    });
+    try {
+      let etfn = await sp.web.getList(listUrl).getListItemEntityTypeFullName();
+      console.log("eftn",etfn);
+      // first create folder
+      let far: FolderAddResult = await sp.web.folders.add(listUrl + '/' + targetFolderName)
+      console.log("far",far);
+      let fData: any = await sp.web.getFolderById(far.data.UniqueId).select('ID').listItemAllFields.get();            
+      console.log("fData",fData);
+      return fData;
+    } catch (error) {
+      console.error('An error occurred:', error);
+      return null;
+    }
+  }
+  public async createFolder(libId:string, documentSetContentTypeId:string, folderName:string){
+    try {
+      const libraryExists = await sp.web.lists.getById(libId).get();
+      if (libraryExists) {
+         return await sp.web.lists.getById(libId).rootFolder.folders.get().then((folders) => {
+          const folderExists = folders.some((folder) => folder.Name === folderName);
+          if (folderExists) {
+            console.log(`Folder '${folderName}' already exists.`);
+            return null;
+          } else {
 
-  public async uploadItems(item:ITodoItem, selectedLibrary:string, createDocumentSet:boolean): Promise<ITodoItem>{
+            // The folder doesn't exist, so create it
+             return sp.web.lists.getById(libId).rootFolder.folders.add(folderName).then(async(currentFolder) => {
+              console.log(`Folder '${folderName}' created successfully in '${libId}'`);
+              return await this.getFolderDetail(this.automotiveListUrl, folderName, documentSetContentTypeId);
+            });
+          }
+        }).catch((error) => {
+          // Handle errors
+          console.error('An error occurred:', error);
+        });
+      } else {
+        console.log(`Document library '${libId}' not found.`);
+        return null;
+      }
+      
+    } catch (error) {
+      
+    }
+    return null;
+  }
+  public async uploadItems(item:ITodoItem, selectedLibrary:string, isMoveOutsideFolder:boolean): Promise<ITodoItem>{
+    console.log("ismoveoutside folder ",isMoveOutsideFolder);
+   
+    console.log("submitted item to move :", item);
+    
+    console.log("from muploaditem slelected lib ", selectedLibrary);
+
     if(selectedLibrary.toLowerCase().includes("automotive") || selectedLibrary.toLowerCase().includes("b5f11715-9d34-416c-9d0c-bd055ee95400")){
-      return await this._uploadItemsInDocSet(item,selectedLibrary,createDocumentSet)
-      .then((itemresponse =>{
-        return itemresponse;
-        }
-      ))
+      if(isMoveOutsideFolder){
+        return await this._uploadItemInDoclib(item,selectedLibrary)
+        .then((itemresponse =>{
+          return itemresponse;
+          }
+        ))
+      }else{
+        return await this._uploadItemsInDocSet(item,selectedLibrary)
+        .then((itemresponse =>{
+          return itemresponse;
+          }
+        ));
+      }
     }else{
       return await this._uploadItemInDoclib(item,selectedLibrary)
     .then((itemresponse =>{
@@ -53,15 +128,19 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     ))
     }
   }
-  public async _uploadItemsInDocSet(item:ITodoItem, selectedLibrary:string, createDocumentSet:boolean):Promise<ITodoItem> {
+  public async _uploadItemsInDocSet(item:ITodoItem, selectedLibrary:string):Promise<ITodoItem> {
     let statusReq:boolean = false;
     try {
           const documentContent:any  = await this.getFileFormServer(item);
          if(documentContent !== undefined)
          {
            const filteredList =SharePointDataProvider._taskLists.filter(item => item.Id ===selectedLibrary)[0];
+           console.log("filteredList: ",filteredList)
+           console.log("selectedLibrary: ",selectedLibrary);
            let selectedLibraryTitle = filteredList.Title;
-           this.convertText( filteredList.Title);
+           let selectedListGuid = filteredList.Id;
+
+           //this.convertText( filteredList.Title);
 
            var internalName= SharePointDataProvider.convertEscapedString(filteredList.EntityTypeName);
            if(internalName =="Prototyp_x0020_Automotive_x0020_Improved"){
@@ -73,10 +152,11 @@ export default class SharePointDataProvider implements ITodoDataProvider {
            }
 
            console.log(filteredList, this._listsUrl);
-           var cttype  = await this.getAvaiableContentTypesByDocRef(selectedLibraryTitle);
+           var cttype  = await this.getAvaiableContentTypesByDocRef(selectedListGuid);
            
            var docsetContentTypeId='' ;
            var documentContentTypeId='' ;
+           console.log(cttype,selectedLibraryTitle)
            if(cttype!= undefined &&  cttype.value.length>0)
            {
              let contentTypes = cttype.value;
@@ -87,59 +167,57 @@ export default class SharePointDataProvider implements ITodoDataProvider {
              docsetContentTypeId = docsetContentType["Id"]["StringValue"];
              documentContentTypeId = documentContentType["Id"]["StringValue"];
              let documentSetname = this.removeFileExtension(item.LinkFilename);
+             const libId ='B5F11715-9D34-416C-9D0C-BD055EE95400';
+             
+            
              //let test = await this.moveFileByPath("","",item.LinkFilename,true,true);
-             var docset = await this.getCretedDocumentSetIdV2(item,filteredList,docsetContentTypeId,documentSetname,internalName);
-             if(docset!=undefined && docset!=null && docset.d !=undefined && docset.d.Id!=undefined ){
+            
+             var docset = await this.createFolder(libId, docsetContentTypeId, documentSetname);
+             console.log("dcreate folder rtn",docset);
+             //var docset =  null;//await this.getCretedDocumentSetIdV2(item,filteredList,docsetContentTypeId,documentSetname,internalName);
+          //  var testdocset =  this.createFolder("Customer%20Documents%20%20Automotive","WOWJQ",docsetContentTypeId);
+           // console.log("createFolder return :",testdocset);
+            
+            //  if(docset!=undefined && docset!=null && docset.d !=undefined && docset.d.Id!=undefined ){
+            if( docset!= null){
+              //let docsetId = docset.d.Id;
+              let docsetId =  docset.ID;  
+              let docfile = documentContent as ArrayBuffer;
+              let file:File = documentContent;
+              const selectedFiles:File[]= [];
+              selectedFiles.push(file);
+              let ext = this.getFileExtension(item.LinkFilename);
+              let fileName = documentSetname;
           
-              let docsetId = docset.d.Id;
+              var modifiedStr = fileName.replace(/\s+\./g, '.');// additional space
+              var modifiedStr = modifiedStr.replace(/-/g, '');// remove hyfen
+              fileName = this.minimizeText(modifiedStr,30)+'.'+ext;
           
-
-              var updateDocSet = await this.updateDocumentSetById(docset,item,filteredList,docsetContentTypeId,documentSetname,internalName);
-        
-              //this.moveFile(item.ServerUrl,"");
+              let responseupload = await this.finalUploadDocset(item,selectedLibraryTitle,selectedFiles,docsetId,documentContentTypeId);
+              // let responseupload = undefined;
+              console.log("return of finalUploadDocset :",responseupload)
+              var updateDocSet = await this.updateDocumentSetById(item,filteredList,docsetContentTypeId,documentSetname,internalName);
+              console.log("return of updateDocumentSetById :",updateDocSet)
+              if(updateDocSet !=undefined){
+              
+                this.showAlert("Success!", file.name+" moved sucessfully!","success");
+                statusReq = true;
+                return item;
+              }else if(docset==undefined || docset ==null){
+                this.showAlert("Error!", "There is a problem moving the file! : ","error");
+                item.Id=0;
+                return item;
+              }
+              else{
+                this.showAlert("Error!", "There is a problem moving the file! : ","error");
+                item.Id=0;
+                return item;
+              }
              
-             let docfile = documentContent as ArrayBuffer;
-             let file:File = documentContent;
-             const selectedFiles:File[]= [];
-             selectedFiles.push(file);
-       
-             let ext = this.getFileExtension(item.LinkFilename);
-             let fileName = documentSetname;
-         
-             var modifiedStr = fileName.replace(/\s+\./g, '.');// additional space
-             var modifiedStr = modifiedStr.replace(/-/g, '');// remove hyfen
-
-             fileName = this.minimizeText(modifiedStr,30)+'.'+ext;
-             
-            //  let destFileUrl = filteredList.ParentWebUrl+"/"+filteredList.EntityTypeName+"/"+documentSetname+"/"+fileName;
-            //  console.log(destFileUrl);
-
-           //  let responseupload = await this.moveFile(item.ServerUrl,destFileUrl,documentContentTypeId);
-             
-             //console.log(responseupload);
-            let responseupload = await this.finalUploadDocset(item,selectedLibraryTitle,selectedFiles,docsetId,documentContentTypeId);
-           // let responseupload = undefined;
-
-            if(responseupload !=undefined){
-              console.log("responseupload",responseupload);
-              this.showAlert("Success!", file.name+" moved sucessfully!","success");
-              statusReq = true;
-              return item;
-            }else if(docset.t.nativeResponse!= undefined){
-              this.showAlert("Error!", "There is a problem moving the file! : ","error");
-              item.Id=0;
-              return item;
             }
-            else{
-              this.showAlert("Error!", "There is a problem moving the file! : ","error");
-              item.Id=0;
-              return item;
-            }
-             
-             }
              else{
     
-               this.showAlert("Error!", "There is a problem creating the document set! Name might exists.code :"+docset.t.nativeResponse.status,"error");
+               this.showAlert("Error!", "Same name might exists ins destination library!","error");
                item.Id=0;
                return item;
              }
@@ -154,7 +232,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       
     } catch (error) {
       console.log("Something went wrong!",error);
-      this.showAlert("Error!", "There is a problem creating the document set! Name might exists.","error");
+      this.showAlert("Error!", "There is a problem creating the Folder! Name might exists.","error");
        item.Id=0;
        return item;
     }
@@ -180,39 +258,20 @@ export default class SharePointDataProvider implements ITodoDataProvider {
           // const filetoupload = await this.readFile(documentContent)
          if(documentContent !== undefined)
          {
-           //console.log(documentContent);
            const filteredList =SharePointDataProvider._taskLists.filter(item => item.Id ===selectedLibrary)[0];
-   
+           let selectedListGuid = filteredList.Id;
            selectedLibrary = filteredList.Title;
            this.convertText( filteredList.Title);
+           var cttype  = await this.getAvaiableContentTypesByDocRef(selectedListGuid);
 
-           var internalName= SharePointDataProvider.convertEscapedString(filteredList.EntityTypeName);
-           if(internalName =="Prototyp_x0020_Automotive_x0020_Improved"){
-           internalName = 'PrototypAutomotiveImproved';
-           }
-           if(filteredList.Id =="6ac7c5a8-9cff-4d31-bdac-8186a2d198ab"){
-           internalName = 'Customer%20Documents%20Apparel';
-           //documentSetContentTypeName = "CD Doc Set Auto";
-           }
-
-           var cttype  = await this.getAvaiableContentTypesByDocRef(selectedLibrary);
-           
-          
            var documentContentTypeId='' ;
            if(cttype!= undefined &&  cttype.value.length>0)
            {
              let contentTypes = cttype.value;
              this.documentContentTypeName = "customer document";
-         
              const documentContentType = contentTypes.filter(item => item.Name.toLowerCase().includes(this.documentContentTypeName))[0];
-
-           
              documentContentTypeId = documentContentType["Id"]["StringValue"];
-
              let documentSetname = this.removeFileExtension(item.LinkFilename);
-             //let test = await this.moveFileByPath("","",item.LinkFilename,true,true);
-            
-            
              let docfile = documentContent as ArrayBuffer;
              let file:File = documentContent;
              const selectedFiles:File[]= [];
@@ -221,26 +280,14 @@ export default class SharePointDataProvider implements ITodoDataProvider {
              let fileName = documentSetname;
              var modifiedStr = fileName.replace(/\s+\./g, '.');// additional space
              var modifiedStr = modifiedStr.replace(/-/g, '');// remove hyfen
-
              fileName = this.minimizeText(modifiedStr,30)+'.'+ext;
-             
-            // let destFileUrl = filteredList.ParentWebUrl+"/"+internalName+"/"+fileName;
 
-
-             //let responseupload = await this.moveFile(item.ServerUrl,destFileUrl,documentContentTypeId);
-             
-             //console.log(responseupload);
-
-
-            let responseupload = await this.finalUploadV2(item,filteredList.Title,selectedFiles,documentContentTypeId);
-
-            console.log("responseupload", responseupload)
+            let responseupload = await this.finalUploadV2(item,filteredList.Title,filteredList.Id,selectedFiles,documentContentTypeId);
             if(responseupload !=undefined){
               let uploadedItem =  await this.getItemByServerRelativeUrl(responseupload.ServerRelativeUrl);
-              console.log("getItemByServerRelativeUrl", uploadedItem)
               if(uploadedItem!= undefined && uploadedItem.value!= undefined && uploadedItem!= null){
                 let id = uploadedItem.value;
-                let updateupload = await this.updateUpload(id,item,filteredList.Title,selectedFiles);
+                let updateupload = await this.updateUpload(id,item,filteredList.Title,filteredList.Id,selectedFiles);
                 this.showAlert("Success!", file.name+" moved sucessfully!","success");
                 statusReq = true;
                 return item;
@@ -276,7 +323,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     finally {
       // Code that should always run
       console.log('Finally block executed');
-      console.log("world finish from upload");
+    
       
       if(!statusReq){
         item.Id=0;
@@ -306,10 +353,9 @@ export default class SharePointDataProvider implements ITodoDataProvider {
           return [];
     }
   }
-
-  public async getAvaiableContentTypesByDocRef(documentLibraryName){
+  public async getAvaiableContentTypesByDocRef(documentLibraryGuid){
     try {
-      let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${documentLibraryName}')/contenttypes?$select=Id,Name`;
+      let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/GetById('${documentLibraryGuid}')/contenttypes?$select=Id,Name`;
      // let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${documentLibraryName}')/contenttypes?$select=Id,Name`;
       const response = await this._webPartContext.spHttpClient.get(reqURL, SPHttpClient.configurations.v1)
       .then((response: SPHttpClientResponse) =>{
@@ -320,31 +366,6 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     } catch (error) {
       console.log(error);
           return [];
-    }
-  }
-  private async getRequestDigestValue(): Promise<string> {
-    const webUrl = this._webPartContext.pageContext.web.absoluteUrl;
-    const endpointUrl = `${webUrl}/_api/contextinfo`;
-
-    const requestOptions: any = {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-      },
-    };
-
-    try {
-      const response = await this._webPartContext.spHttpClient.fetch(endpointUrl, SPHttpClient.configurations.v1, requestOptions);
-      const data = await response.json();
-
-      if (response.ok && data && data.FormDigestValue) {
-        return data.FormDigestValue;
-      } else {
-        throw new Error('Failed to retrieve request digest.');
-      }
-    } catch (error) {
-      throw new Error('Error retrieving request digest: ' + error);
     }
   }
   public async getContentFieldsById(contentTypeId: string): Promise<any[]> {
@@ -366,8 +387,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         return [];
       });
   }
-
-   public async updateDocumentSetByIdV2(docset,docItem:ITodoItem,filteredList:ITodoTaskList,contentTypeId,documentSetname,internalName){
+  public async updateDocumentSetByIdV2(docset,docItem:ITodoItem,filteredList:ITodoTaskList,contentTypeId,documentSetname,internalName){
     let docsetId = docset.d.Id;
     const itemPayload = {
       '__metadata': {
@@ -401,11 +421,11 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     }
    
   }
-  public async updateDocumentSetById(docset,docItem:ITodoItem,filteredList:ITodoTaskList,contentTypeId,documentSetname,internalName){
-
-      let docsetId = docset.d.Id;
-      const webUrl = this._webPartContext.pageContext.web.absoluteUrl;
-      const libraryName =filteredList.Title   ; 
+  public async updateDocumentSetById(docItem:ITodoItem,filteredList:ITodoTaskList,contentTypeId,documentSetname,internalName){
+      try {
+        const webUrl = this._webPartContext.pageContext.web.absoluteUrl;
+      // console.log("updateDocumentSetById,contentTypeId: ",contentTypeId);
+      const fileName = this.removeFileExtension(docItem.LinkFilename);
     //  console.log("docItem",docItem);                    ;
       let listItemPayload ;
       if(docItem.Country!=null){
@@ -414,10 +434,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
            //"SAP_x0020_Kundennummer0 ": docItem.SAP_x0020_Kundennummer,
           
           "Test_x0020_Division":"Automotive",
+          "ContentTypeId":contentTypeId,
           "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
           "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
           "ResponsibleKAMId":docItem.ResponsibleKAMId,
           "ResponsibleKAMStringId":docItem.ResponsibleKAMStringId,
+          "StartDate": docItem.StartDate,
           "Project": docItem.Project,
           "Customer0": docItem.Customer0,
           "Country":{
@@ -430,19 +452,17 @@ export default class SharePointDataProvider implements ITodoDataProvider {
 
           listItemPayload = {
            // "Title": documentSetname,   
+           "ContentTypeId":contentTypeId,
             "Test_x0020_Division":"Automotive",
             "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
             "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
             "ResponsibleKAMId":docItem.ResponsibleKAMId,
             "ResponsibleKAMStringId":docItem.ResponsibleKAMStringId,
+            "StartDate": docItem.StartDate,
             "Project": docItem.Project,
             "Customer0": docItem.Customer0
           }
-
       }
-
-    const digestValue = await this.getRequestDigestValue();
-
       const spHttpClientOptions: ISPHttpClientOptions = {
         body: JSON.stringify(listItemPayload),
         headers: {
@@ -458,46 +478,33 @@ export default class SharePointDataProvider implements ITodoDataProvider {
        SPHttpClient.configurations.v1,
        spHttpClientOptions
     ) 
+        
+      } catch (error) {
+        console.log("Error Occured  :",error);
+      }
   }
-
   public async getCretedDocumentSetIdV2(docItem:ITodoItem,filteredList:ITodoTaskList,contentTypeId,documentSetname,internalName):Promise<any>{
-
     try {
       const webUrl = this._webPartContext.pageContext.web.absoluteUrl;
       const libraryName =internalName;
-      this.automotiveListUrl
       let exceptionLibInternalName = this.getLastPartOfPath(this.automotiveListUrl);
-
-      // const folderPayload = { 
-      //   ContentTypeId: contentTypeId,
-      //   SAP_x0020_Kundennummer: "test_SAP_x0020_Kundennummer",
-  
-      //   Customer_x0020_Group_x0020_Company: "TEST"
-
-      //   /* your folder payload */ 
-      // };
       const libraryUrl = this._webPartContext.pageContext.web.absoluteUrl+"/"+exceptionLibInternalName;
       const folderName = documentSetname;
       const folderContentTypeId = contentTypeId;
-      
       const httpClientOptions: ISPHttpClientOptions = {
           body: JSON.stringify({
             "Title":folderName,
             "Path":libraryUrl,
             "Division": docItem.Division,
-            "SAPKundennummer":docItem.SAP_x0020_Kundennummer
+            "SAPKundennummer":docItem.SAP_x0020_Kundennummer,
           }),
           headers: {
               "Accept": "application/json;odata=verbose",
               "Slug": `${libraryUrl}/${folderName}|${folderContentTypeId}`,
           }
       };
-      
       return await this._webPartContext.spHttpClient.post(
-            `${webUrl}/_vti_bin/listdata.svc/${libraryName}`,
-          // `${webUrl}/_api/web/lists/getbytitle('${filteredList.Title}')/rootfolder/folders`,
-          
-          // `${webUrl}/_api/web/lists/getbytitle('${libraryName}')/items(${data.d.Id})`,
+          `${webUrl}/_vti_bin/listdata.svc/${libraryName}`,
           SPHttpClient.configurations.v1,
           httpClientOptions
       )
@@ -516,7 +523,9 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     }
     return null;
   }
-  public async finalUploadDocset(docItem:ITodoItem, libraryName:string,documents: File[], documentSetId: string, contentTypeId:string) {
+  public escapeParam = (value) => encodeURIComponent(value.replace(/'/g, "''"));
+
+  public async finalUploadDocset(docItem:ITodoItem, libraryName:string,documents: File[], documentSetId: string, contentTypeId:string){
     try {
       const filteredList =SharePointDataProvider._taskLists.filter(item => item.Title ===libraryName)[0];
       libraryName=filteredList.Title;
@@ -534,194 +543,123 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         }
       };
     let fileName = file.name;
-    const uploadUrl: string = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${libraryName}')/items(${documentSetId})/Folder/files/add(url='${fileName}',overwrite=true)`;
+    let folderName = this.removeFileExtension(file.name);
+    const uploadUrl: string = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/GetById('${filteredList.Id}')/items(${documentSetId})/Folder/files/add(url='${fileName}',overwrite=true)`;
       const response = await this._webPartContext.spHttpClient.post(uploadUrl, SPHttpClient.configurations.v1,spHttpClientOptions)
       .then((response: SPHttpClientResponse) =>{
         if (response.ok){
+
          return  response.json().then((async x=>{
-            const fileId =parseInt(documentSetId) +1;
-            const listItemUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${libraryName}')/items(${fileId})`;
+          try {
+           // console.log("finalUploadDocset", x);
+            const fileId =parseInt(documentSetId);
+            
+            //const listItemUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/GetById('${filteredList.Id}')/items(${fileId})`;
+            const listItemUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/GetFolderByServerRelativeUrl('/contract_mgmt/cd/Customer%20Documents%20%20Automotive/${folderName}/${fileName}')/ListItemAllFields`;
+            
             let listItemPayload ;
-            if(docItem.Country!=null && docItem.AMANN_x0020_Company!=null){
+            const basePayload = {
+              "ContentTypeId": contentTypeId,
+              "Title": docItem.Title,
+              "Test_x0020_Division": "Automotive",
+              "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
+              "OData__Comments": docItem.OData__Comments,
+              "Customer0": docItem.Customer0,
+              "ResponsibleKAMId": docItem.ResponsibleKAMId,
+              "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
+              "Customer_x0020_Classification": docItem.Customer_x0020_Classification,
+              "Project": docItem.Project,
+              "Category_x0020_of_x0020_Document0": docItem.Category_x0020_of_x0020_Document,
+              "Status_x0020_CD": docItem.Status_x0020_CD,
+              "Responible_x0020_Legal" :docItem.Responible_x0020_Legal,
+              "ChecklistLink": docItem.ChecklistLink,
+              "CurrentStatus": docItem.CurrentStatus,
+              "StartDate": docItem.StartDate,
+              "Review_x0020_Closed": docItem.Review_x0020_Closed
+            };
+            
+            if (docItem.Country != null && docItem.AMANN_x0020_Company != null) {
               listItemPayload = {
-            // "__metadata": { "type": "SP.Data.YourListNameListItem" },
-            "ContentTypeId": contentTypeId,
-            "Title": docItem.Title,
-            "Test_x0020_Division":"Automotive",
-            "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
-            "OData__Comments":docItem.OData__Comments,
-            "Customer0":docItem.Customer0,
-            "ResponsibleKAMId":docItem.ResponsibleKAMId,
-            "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-            "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-            "Project":docItem.Project,
-            "Country":{
-              "Label":docItem.Country.Label,
-              "TermGuid":docItem.Country.TermGuid,
-              "WssId":-1
-              },
-              "AMANN_x0020_Company":{
-                "Label":docItem.AMANN_x0020_Company.Label,
-                "TermGuid":docItem.AMANN_x0020_Company.TermGuid,
-                "WssId":-1
+                ...basePayload,
+                "Country": {
+                  "Label": docItem.Country.Label,
+                  "TermGuid": docItem.Country.TermGuid,
+                  "WssId": -1
+                },
+                "AMANN_x0020_Company": {
+                  "Label": docItem.AMANN_x0020_Company.Label,
+                  "TermGuid": docItem.AMANN_x0020_Company.TermGuid,
+                  "WssId": -1
+                }
+              };
+            } else if (docItem.Country != null) {
+              listItemPayload = {
+                ...basePayload,
+                "Country": {
+                  "Label": docItem.Country.Label,
+                  "TermGuid": docItem.Country.TermGuid,
+                  "WssId": -1
+                }
+              };
+            } else if (docItem.AMANN_x0020_Company != null) {
+              listItemPayload = {
+                ...basePayload,
+                "AMANN_x0020_Company": {
+                  "Label": docItem.AMANN_x0020_Company.Label,
+                  "TermGuid": docItem.AMANN_x0020_Company.TermGuid,
+                  "WssId": -1
+                }
+              };
+            } else {
+              listItemPayload = basePayload;
             }
-
-          }
             
-          }else if(docItem.Country!=null ){
-             listItemPayload = {
-              "ContentTypeId": contentTypeId,
-              "Title": docItem.Title,
-              "Test_x0020_Division":"Automotive",
-              "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
-              "OData__Comments":docItem.OData__Comments,
-              "Customer0":docItem.Customer0,
-              "ResponsibleKAMId":docItem.ResponsibleKAMId,
-              "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-              "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-              "Project":docItem.Project,
-              "Country":{
-                "Label":docItem.Country.Label,
-                "TermGuid":docItem.Country.TermGuid,
-                "WssId":-1
-             },
 
-            }
-          }
-          else if(docItem.AMANN_x0020_Company!=null ){
-             listItemPayload = {
-              "ContentTypeId": contentTypeId,
-              "Title": docItem.Title,
-              "Test_x0020_Division":"Automotive",
-              "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
-              "OData__Comments":docItem.OData__Comments,
-              "Customer0":docItem.Customer0,
-              "ResponsibleKAMId":docItem.ResponsibleKAMId,
-              "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-              "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-              "Project":docItem.Project,
-              "AMANN_x0020_Company":{
-                "Label":docItem.AMANN_x0020_Company.Label,
-                "TermGuid":docItem.AMANN_x0020_Company.TermGuid,
-                "WssId":-1
-             }
-            }
-          }
-          else{
-            listItemPayload = {
-              "ContentTypeId": contentTypeId,
-              "Title": docItem.Title,
-              "Test_x0020_Division":"Automotive",
-              "SAP_x0020_Kundennummer0": docItem.SAP_x0020_Kundennummer,
-              "OData__Comments":docItem.OData__Comments,
-              "Customer0":docItem.Customer0,
-              "ResponsibleKAMId":docItem.ResponsibleKAMId,
-              "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-              "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-              "Project":docItem.Project
-            }
-          }
-    //         if(docItem.Country!=null && docItem.AMANN_x0020_Company!=null){
-    //             listItemPayload = {
-    //           // "__metadata": { "type": "SP.Data.YourListNameListItem" },
-    //           "ContentTypeId": contentTypeId,
-    //           "Title": docItem.Title,
-    //           "Test_x0020_Division":"Automotive",
-    //      //     "SAP_x0020_Kundennummer": docItem.SAP_x0020_Kundennummer,
-    //           "_Comments":docItem._Comments,
-    //           "Customer":docItem.Customer0,
-    //           "ResponsibleKAMId":docItem.ResponsibleKAMId,
-    //           "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-    //           "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-    //           "Country":{
-    //             "Label":docItem.Country.Label,
-    //             "TermGuid":docItem.Country.TermGuid,
-    //             "WssId":-1
-    //             },
-    //             "AMANN_x0020_Company":{
-    //               "Label":docItem.AMANN_x0020_Company.Label,
-    //               "TermGuid":docItem.AMANN_x0020_Company.TermGuid,
-    //               "WssId":-1
-    //           }
-
-    //         }
-              
-    //         }else if(docItem.Country!=null ){
-    //            listItemPayload = {
-    //             // "__metadata": { "type": "SP.Data.YourListNameListItem" },
-    //             "ContentTypeId": contentTypeId,
-    //             "Title": docItem.Title,
-    //             "Test_x0020_Division":"Automotive",
-    //    //         "SAP_x0020_Kundennummer": docItem.SAP_x0020_Kundennummer,
-    //             "_Comments":docItem._Comments,
-    //             "Customer":docItem.Customer0,
-    //             "ResponsibleKAMId":docItem.ResponsibleKAMId,
-    //             "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-    //             "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-    //             "Country":{
-    //               "Label":docItem.Country.Label,
-    //               "TermGuid":docItem.Country.TermGuid,
-    //               "WssId":-1
-    //            },
-  
-    //           }
-    //         }
-    //         else if(docItem.AMANN_x0020_Company!=null ){
-    //            listItemPayload = {
-    //             "ContentTypeId": contentTypeId,
-    //             "Title": docItem.Title,
-    //             "Test_x0020_Division":"Automotive",
-    //  //           "SAP_x0020_Kundennummer": docItem.SAP_x0020_Kundennummer,
-    //             "_Comments":docItem._Comments,
-    //             "Customer":docItem.Customer0,
-    //             "ResponsibleKAMId":docItem.ResponsibleKAMId,
-    //             "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-    //             "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-    //             "AMANN_x0020_Company":{
-    //               "Label":docItem.AMANN_x0020_Company.Label,
-    //               "TermGuid":docItem.AMANN_x0020_Company.TermGuid,
-    //               "WssId":-1
-    //            }
-    //           }
-    //         }
-    //         else{
-    //           listItemPayload = {
-    //             "ContentTypeId": contentTypeId,
-    //             "Title": docItem.Title,
-    //             "Test_x0020_Division":"Automotive",
-    //     //        "SAP_x0020_Kundennummer": docItem.SAP_x0020_Kundennummer,
-    //             "_Comments":docItem._Comments,
-    //             "Customer":docItem.Customer0,
-    //             "ResponsibleKAMId":docItem.ResponsibleKAMId,
-    //             "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
-    //             "Customer_x0020_Classification":docItem.Customer_x0020_Classification,
-    //           }
-
-    //         }
-
-
-            console.log("listItemPayload:",JSON.stringify(listItemPayload));
-            
-            const listItemResponse = await this._webPartContext.spHttpClient.post(listItemUrl, SPHttpClient.configurations.v1, {
+            //console.log("listItemPayload:",JSON.stringify(listItemPayload));
+            const spHttpClientOptionsCall: ISPHttpClientOptions = {
+              body: JSON.stringify(listItemPayload),
               headers: {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
                 "X-HTTP-Method": "MERGE",
                 "If-Match": "*"
-              },
-              body: JSON.stringify(listItemPayload)
-            });
-      
-            if (listItemResponse.ok) {
-              return await listItemResponse.json().then((xtest=>{
-                console.log("xtest",xtest);
-              }))
-            } else {
-              console.log(`Error updating list item: ${listItemResponse.status}`);
-              return [];
-            }
-
+              }
+            };
+            return await this._webPartContext.spHttpClient.post(
+              listItemUrl,
+               SPHttpClient.configurations.v1,
+               spHttpClientOptionsCall
+            ).then((resultContent=> {
+              if(resultContent == undefined || resultContent == null){
+                console.log("Issue in finalUploadDocset", resultContent);
+              }
+              return resultContent;
+            }));
+            
+            // return  await this._webPartContext.spHttpClient.post(listItemUrl, SPHttpClient.configurations.v1, {
+            //   headers: {
+            //     "Accept": "application/json",
+            //     "Content-Type": "application/json",
+            //     "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
+            //     "X-HTTP-Method": "MERGE",
+            //     "If-Match": "*"
+            //   },
+            //   body: JSON.stringify(listItemPayload)
+            // }).then((result => {
+            //   return result;
+            //   //console.log("listItemResponse ,(result): ",result);
+            // }));
+            // if (listItemResponse!= undefined && listItemResponse !=null) {
+            //   return await listItemResponse;
+            // } else {
+            //   console.log("listItemResponse== undefined");
+            //   console.log(`Error updating list item: ${listItemResponse}`);
+            //   return [];
+            // }
+          } catch (error) {
+            console.log("Error occured: Issue in finalUploadDocset",error);
+          }
           }))
          // return result;
         }});
@@ -731,14 +669,14 @@ export default class SharePointDataProvider implements ITodoDataProvider {
           return [];
     }
   }
-  public async updateUpload(itemId:string,docItem:ITodoItem, libraryName:string,documents: File[]):Promise<any> {
+  public async updateUpload(itemId:string,docItem:ITodoItem, libraryName:string, libGuid:string,documents: File[]):Promise<any> {
     try {
       let listUrl= '';
       if(itemId== null || itemId== '' || itemId== undefined){
         console.log(itemId, "item id is missing to update the file props")
         return null;
       }
-      let urlreq =  `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${libraryName}')/items(${itemId})`;
+      let urlreq =  `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/GetById('${libGuid}')/items(${itemId})`;
       let listItemPayload ;
       let division;
       console.log("docItem",docItem);
@@ -755,7 +693,10 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         listUrl = this.techtexListUrl;
         division = "Techtex";
       }
-      console.log("update dupload:",division, itemId);
+      else if(libraryName.toLowerCase().includes("automotive")){
+        listUrl = this.techtexListUrl;
+        division = "Automotive";
+      }
       if(docItem.Country!=null && docItem.AMANN_x0020_Company!=null){
         listItemPayload = {
         "Test_x0020_Division":division,
@@ -768,6 +709,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         "Terms_x0020_of_x0020_Payment":docItem.Terms_x0020_of_x0020_Payment,
         "ResponsibleKAMId":docItem.ResponsibleKAMId,
         "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
+
+        "Responible_x0020_Legal": docItem.Responible_x0020_Legal,
+        "CurrentStatus" : docItem.CurrentStatus,
+        "Status_x0020_CD" :docItem.Status_x0020_CD,
+        "StartDate": docItem.StartDate,
+
         "Country":{
           "Label":docItem.Country.Label,
           "TermGuid":docItem.Country.TermGuid,
@@ -794,6 +741,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         "Terms_x0020_of_x0020_Payment":docItem.Terms_x0020_of_x0020_Payment,
         "ResponsibleKAMId":docItem.ResponsibleKAMId,
         "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
+
+        "Responible_x0020_Legal": docItem.Responible_x0020_Legal,
+        "CurrentStatus" : docItem.CurrentStatus,
+        "Status_x0020_CD" :docItem.Status_x0020_CD,
+        "StartDate": docItem.StartDate,
+
         "Country":{
           "Label":docItem.Country.Label,
           "TermGuid":docItem.Country.TermGuid,
@@ -813,6 +766,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         "Terms_x0020_of_x0020_Payment":docItem.Terms_x0020_of_x0020_Payment,
          "ResponsibleKAMId":docItem.ResponsibleKAMId,
          "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
+
+         "Responible_x0020_Legal": docItem.Responible_x0020_Legal,
+         "CurrentStatus" : docItem.CurrentStatus,
+         "Status_x0020_CD" :docItem.Status_x0020_CD,
+         "StartDate": docItem.StartDate,
+
         "AMANN_x0020_Company":{
           "Label":docItem.AMANN_x0020_Company.Label,
           "TermGuid":docItem.AMANN_x0020_Company.TermGuid,
@@ -832,12 +791,15 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         "Terms_x0020_of_x0020_Payment":docItem.Terms_x0020_of_x0020_Payment,
          "ResponsibleKAMId":docItem.ResponsibleKAMId,
          "ResponsibleKAMStringId": docItem.ResponsibleKAMStringId,
+         "Responible_x0020_Legal": docItem.Responible_x0020_Legal,
+         "CurrentStatus" : docItem.CurrentStatus,
+         "Status_x0020_CD" :docItem.Status_x0020_CD,
+         "StartDate": docItem.StartDate,
       }
 
     }
-    console.log("listItemPayload",listItemPayload);
-     
-      const listItemResponse = await this._webPartContext.spHttpClient.post(urlreq, SPHttpClient.configurations.v1, {
+    console.log("listItemPayload:",listItemPayload);
+      return  await this._webPartContext.spHttpClient.post(urlreq, SPHttpClient.configurations.v1, {
       headers: {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -846,15 +808,21 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         "If-Match": "*"
       },
       body: JSON.stringify(listItemPayload)
-      });
+      }).then((resultContent=> {
+        if(resultContent == undefined || resultContent == null){
+          console.log("Issue in updateUpload", resultContent);
+        }
+        return resultContent;
+      }));
+      
   
-      if(listItemResponse.ok) {
-        return await listItemResponse.json();
-      }
-      else {
-        console.log(`Error updating list item: ${listItemResponse.status}`);
-        return null;;
-      }
+      // if(listItemResponse.ok) {
+      //   return await listItemResponse.json();
+      // }
+      // else {
+      //   console.log(`Error updating list item: ${listItemResponse.status}`);
+      //   return null;;
+      // }
       
     } catch (error) {
       console.log(error)
@@ -886,8 +854,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
    
 
   }
-  public async finalUploadV2(docItem:ITodoItem, libraryName:string,documents: File[],  contentTypeId:string):Promise<any> {
-    console.log("new doc creating ct:",contentTypeId);
+  public async finalUploadV2(docItem:ITodoItem, libraryName:string,libId:string,documents: File[],  contentTypeId:string):Promise<any> {
     let listUrl= null;
     let division;
     if(libraryName.toLowerCase().includes("consumer")){
@@ -901,6 +868,10 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     else if(libraryName.toLowerCase().includes("techtex")){
       listUrl = this.techtexListUrl;
       division = "Techtex";
+    }
+    else if(libraryName.toLowerCase().includes("automotive")){
+      listUrl = this.techtexListUrl;
+      division = "Automotive";
     }
     const file = documents[documents.length-1]
     const fileBuffer = await this.readFile(file);
@@ -920,15 +891,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
 
     var targetUrl = this._webPartContext.pageContext.web.absoluteUrl + "/" + libraryName;  
 
+    
 
-    var url = `${webUrl}/_api/web/lists/getByTitle('${libraryName}')/RootFolder/Files/Add(url='${fileName}', overwrite=true)`;
-            // Construct the Endpoint  
-      // var url = webUrl + "/_api/Web/GetFolderByServerRelativeUrl(@target)/Files/add(overwrite=true, url='" + fileName + "')?@target='" + targetUrl + "'&$expand=ListItemAllFields";  
-    // Get the SharePoint list or library endpoint
-    //const endpointUrl = `${webUrl}/_api/web/getfolderbyserverrelativeurl('${listUrl}')/files/add(overwrite=true,url='${fileName}')?`;
 
-    // Convert the file content to an ArrayBuffer
-    //const contentArrayBuffer = new TextEncoder().encode(fileContent);
+   // var url = `${webUrl}/_api/web/lists/getByTitle('${libraryName}')/RootFolder/Files/Add(url='${fileName}', overwrite=true)`;
+    var url = `${webUrl}/_api/web/lists/GetById('${libId}')/RootFolder/Files/Add(url='${fileName}', overwrite=true)`;
+
 
     // Prepare the request headers
     const spHttpClientOptions: ISPHttpClientOptions = {
@@ -966,16 +934,21 @@ export default class SharePointDataProvider implements ITodoDataProvider {
   public  isUserSiteMemberWithEditPermissions = async (context) => {
     const siteUrl = context.pageContext.web.absoluteUrl;
     try {
+
       const response: SPHttpClientResponse = await context.spHttpClient.get(
          `${siteUrl}/_api/web/CurrentUser?$expand=Groups&$select=Id,Groups/Id,Groups/Title,Groups/CanEdit`,SPHttpClient.configurations.v1);
       //  `${siteUrl}/_api/web/RoleAssignments?$expand=Member&$filter=Member/LoginName eq '${currentUserLoginName}' and (RoleDefinitionBindings/Name eq 'Contribute' or RoleDefinitionBindings/Name eq 'Edit' )  `, SPHttpClient.configurations.v1);
       if (response.ok) {
         const user = await response.json();
         const groups = user.Groups;
+        console.log("Current user groups ",groups);
         const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("member") ||   item.Title.toLowerCase().includes("owner") || item.Title.toLowerCase().includes("visitor"))[0];
+       
         if(filteredList!=undefined){
+          console.log("Current user does not have permission ")
           return true;
         }
+
         return false;
       } else {
         console.log(`Error: ${response.status}`);
@@ -986,36 +959,21 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       return false;
     }
   };
-  public  _getPermissions = async () => {
+  private async checkGroupMembership(groupName: string): Promise<boolean> {
     try {
-      const response = await fetch('/_api/web/effectiveBasePermissions', {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json;odata=verbose',
-          'Content-Type': 'application/json;odata=verbose',
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        //console.log(data);
-        const permissions = data.d.EffectiveBasePermissions;
-        let viewItems = permissions.High & 1 ? 'Yes' : 'No';
-        let addtems = permissions.High & 2 ? 'Yes' : 'No';
-        let editItems = permissions.High & 4 ? 'Yes' : 'No';
-        let deleteItems = permissions.High & 8 ? 'Yes' : 'No';
-        // console.log("viewItems",viewItems);
-        // console.log("addtems",addtems);
-        // console.log("editItems",editItems);
-        // console.log("deleteItems",deleteItems);
-        // setPermissions(permissions);
-      } else {
-        throw new Error('Failed to get user permissions');
-      }
+      const group = await sp.web.siteGroups.getByName(groupName).users
+        .filter(`Id eq ${this._webPartContext.pageContext.legacyPageContext.userId}`)
+        .get();
+        this.printStatus("CheckcheckGroupMembership, groupName: "+groupName +"destLibIds :", group);
+      return group.length > 0;
     } catch (error) {
-      console.error(error);
+      console.error(`Error checking group membership: ${error}`);
+      return false;
     }
-  };
+  }
+  public  printStatus (msg:string, obj:any){
+    console.log(msg,obj);
+  }
   private async _getLists(): Promise<ITodoTaskList[]> {
     let filter = "Hidden eq false and ";
     filter += "BaseType eq 1 and BaseTemplate eq 101";
@@ -1026,12 +984,10 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         'Content-Type': 'application/json'
       }
     };
-    console.log("_getLists");
     const response: SPHttpClientResponse = await this._webPartContext.spHttpClient.get(endpointUrl, SPHttpClient.configurations.v1,options);
     return await response.json().then((json: { value: ITodoTaskList[] }) => {
       return  SharePointDataProvider._taskLists = json.value.map( (task: ITodoTaskList) => {
        let test:ITodoTaskList =task;
-       console.log(test);
         return test;
       });
     });
@@ -1047,8 +1003,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     var sortOrder = "desc";
     //const queryString: string =`?$select=Title,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Created `+sortOrder;
    // const queryString: string =`?$select=Title,Responsible_x0020_CSC,ResponsibleKAM,Country,AMANN_x0020_Company,Priority,time_x0020_customer,Received,Incoterms_x0020__x0028_currently_x0029_,Terms_x0020_of_x0020_payment,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Comments,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Created `+sortOrder;
-    const queryString: string =`?$select=Title,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Modified `+sortOrder;
-    
+    const queryString: string =`?$select=Title,HasUniqueRoleAssignments,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Modified%20desc`;
     //const queryString: string =`?$select=*&$top=3000&$orderby=Created `+sortOrder;
     const queryUrl: string = this._listItemsUrl + queryString;
     // const requestOptions: ISPHttpClientOptions = {
@@ -1061,26 +1016,23 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         return response.json();
       })
       .then((json: { value: ITodoItem[] }) => {
-       // console.log("GetDocs: ",json.value);
         return json.value.map((task: ITodoItem) => {
           task.DefaultEditUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_layouts/15/listform.aspx?PageType=6&ListId=${this.selectedList.Id}&ID=${task.Id}&RootFolder=*`;
-         
           return task;
         });
       });
   }
   private _getDoc(itemId: string): Promise<ITodoItem> {
-    console.log("itemId",itemId);
-    const queryString: string =`?$select=Title,Project,SAP_x0020_Kundennummer,Category_x0020_of_x0020_Document,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$filter=Id eq '${itemId}'`;
+    const queryString: string =`?$select=Title,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Modified%20desc`;
+   
+    //const queryString: string =`?$select=Title,Project,SAP_x0020_Kundennummer,Category_x0020_of_x0020_Document,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$filter=Id eq '${itemId}'`;
     //const queryString: string =`?$select=*&$top=3000&$orderby=Created `+sortOrder;
     const queryUrl: string = this._listItemsUrl + queryString;
     return this._webPartContext.spHttpClient.get(queryUrl, SPHttpClient.configurations.v1)
       .then((response: SPHttpClientResponse) => {
         return response.json()
         .then((dataitm =>{
-         // console.log("dataitm",dataitm);
           let itm:ITodoItem = dataitm.value[0];
-         // console.log("itm,",itm);
           return itm;
         }))
       });
@@ -1339,7 +1291,6 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     
     // Join the words together without any separators
     let convertedText = words.join('');
-    console.log("convertedText",convertedText);
     
     return convertedText;
   }
@@ -1357,285 +1308,4 @@ export default class SharePointDataProvider implements ITodoDataProvider {
   
     return lastPart;
   }
-    // public async getCretedDocumentSetId(filteredList,contentTypeId,documentSetname,internalName){
-
-  //   try {
-  //     //documentSetname = documentSetname+"_docset";
-  //     var encodedDocumentSetname = encodeURIComponent(documentSetname);
-  //     let listUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/${internalName}`;
-  //     //const digestValue = await this.getRequestDigestValue();
-  //     let slug =  `${listUrl}/${documentSetname}|${contentTypeId}` ;
-  //   //   const folderData = {
-  //   //     Title: documentSetname,
-  //   //     Path: `${internalName}/${documentSetname}}`,
-  //   //     ContentTypeId: contentTypeId,
-  //   //     FileSystemObjectType: 1,
-  //   //     ListItemEntityTypeFullName: filteredList.ListItemEntityTypeFullName
-  //   // };
-
-  //   const payload = {
-  //     '__metadata': { 'type': 'SP.DocumentSet' },
-  //     'ContentTypeId': contentTypeId,
-  //     'Title':documentSetname,
-  //     'Path': `${listUrl}`,
-  //     'Name': documentSetname
-  //   };
-
-  //   // payload: JSON.stringify({
-  //   //   '__metadata': { 'type': 'SP.DocumentSet' },
-  //   //   'ContentTypeId': contentTypeId,
-  //   //   'PropertyName1': 'New Value 1',
-  //   //   'PropertyName2': 'New Value 2',
-  //   //   // Add other properties to update
-  //   // })
-
-  //     let options: ISPHttpClientOptions =  { 
-  //       // method: "POST", 
-  //       // body: JSON.stringify(
-  //       //   { 'Title' : documentSetname , 'Path' : listUrl }), 
-  //       body: JSON.stringify(payload),
-
-
-  //       headers: 
-  //         { 
-  //           "content-type": "application/json;odata=verbose", 
-  //           "accept": "application/json;odata=verbose", 
-  //           "slug":slug
-  //         } 
-  //       };
-  //      let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_vti_bin/listdata.svc/${internalName}`;
-  //    //let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists('4010f6e6-3ee9-4740-a247-20afaa652f1d')/RootFolder/Files/add(url='test1234', overwrite=true)`;
-  //   // let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists('${filteredList.Id}')/items/add(url='test1234', overwrite=true)`;
-     
-     
-  //    // let reqURL = `${this._webPartContext.pageContext.web.absoluteUrl}/_vti_bin/listdata.svc/CustomerDocumentsAutomotive`;
-  //     const response = await this._webPartContext.spHttpClient.post(reqURL, SPHttpClient.configurations.v1,options)
-  //     .then((response: SPHttpClientResponse) =>{
-  //       if (response.ok){
-  //         return response.json();
-  //       }
-  //       return response;
-  //     }).catch((error: any) => {
-  //       console.log(error);
-  //     });
-  //       // .then(  data =>{
-  //       //   return data;
-          
-
-  //       // });
-
-  //     return response;
-  //   } catch (error) {
-  //     console.log(error);
-          
-  //   }
-  //   return null;
-  // }
-
-  //  public async moveFile(sourceFileUrl:string,destFileUrl:string ,contentTypeId:string):Promise<any> {
-  //   try {
-  //     // sourceFileUrl = "/sites/spclassicdev/DropLibrary/Banglalink UAT_ODA.docx";
-  //     // destFileUrl = "/sites/spclassicdev/copied/Banglalink UAT_ODA/Banglalink UAT_ODA.docx";
-  //    const webUrl = this._webPartContext.pageContext.web.absoluteUrl;
-  //    const apiUrl = `${webUrl}/_api/web/getfilebyserverrelativeurl('${sourceFileUrl}')/moveto(newurl='${destFileUrl}',flags=1)`;
-  //   // const apiUrl = `${webUrl}/_api/web/getfilebyserverrelativeurl('${fileUrl}')/copyto(strnewurl='${newFileUrl}',boverwrite=true)`;
-  //    const headers = {
-  //      "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
-  //      "Accept": "application/json",
-  //      "Content-Type": "application/json", // Use the MIME type of the file being uploaded
-  //      "X-HTTP-Method": "POST",
-  //      "X-Microsoft-HTTP-Method": "PUT",
-  //      "If-Match": "*"
-  //    };
-
-  //   //  const body = JSON.stringify({
-  //   //   "__metadata": {
-  //   //     "type": "SP.ListItem"
-  //   //   },
-  //   //   "ContentTypeId": contentTypeId,
-  //   // });
- 
-  //    const spHttpClientConfig = {
-  //      headers: headers,
-  //      body: ""
-  //    };
- 
-  //    const spHttpClientOptions = {
-  //      method: "POST",
-  //      spHttpClientConfig: spHttpClientConfig
-  //    };
- 
-  //    return await this.sendRequest(apiUrl,spHttpClientOptions)
-  //      .then( async response => {
-  //       console.log("moveFile",response)
-  //        //console.log(response);
-
-  //        console.log("File moved successfully");
-
-  //        console.log("result:", x);
-  //        const fileId =parseInt(documentSetId) +1;
-  //        const listItemUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/lists/getbytitle('${libraryName}')/items(${fileId})`;
-  //        const listItemPayload = {
-  //          // "__metadata": { "type": "SP.Data.YourListNameListItem" },
-  //          "ContentTypeId": contentTypeId
-  //        };
-  //        const listItemResponse = await this._webPartContext.spHttpClient.post(listItemUrl, SPHttpClient.configurations.v1, {
-  //          headers: {
-  //            "Accept": "application/json",
-  //            "Content-Type": "application/json",
-  //            "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
-  //            "X-HTTP-Method": "MERGE",
-  //            "If-Match": "*"
-  //          },
-  //          body: JSON.stringify(listItemPayload)
-  //        });
-   
-  //        if (listItemResponse.ok) {
-  //          return await listItemResponse.json().then((xtest=>{
-  //            console.log("xtest",xtest);
-  //          }))
-  //        } else {
-  //          console.log(`Error updating list item: ${listItemResponse.status}`);
-  //          return [];
-  //        }
-  //       //  console.log("result:", x);
-  //       //     const fileId =parseInt(documentSetId) +1;
-
-  //       // const itemUrl = `${webUrl}/_api/web/GetFileByServerRelativeUrl('${destFileUrl}')/ListItemAllFields`;
-  //       // const properties = {
-  //       //   'Title': 'test12344444',
-
-  //       // };
-
-  //       // const headers = {
-  //       //   Accept: "application/json;odata=verbose",
-  //       //   "Content-Type": "application/json;odata=verbose",
-  //       //   "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
-  //       //   "X-HTTP-Method": "MERGE",
-  //       //   "IF-MATCH": "*"
-  //       // };
-      
-  //       // const itemPayload = {
-  //       //   // __metadata: {
-  //       //   //   type: "SP.File"
-  //       //   // }
-  //       // };
-      
-  //       // for (const prop in properties) {
-  //       //   itemPayload[prop] = properties[prop];
-  //       // }
-      
-  //       // const spHttpClientOptions: ISPHttpClientOptions = {
-  //       //   body: JSON.stringify(itemPayload),
-  //       //   headers: headers
-  //       // };
-  //       // //GetFileByServerRelativeUrl('/sites/spclassicdev/Copied/Banglalink%20UAT_ODA/Banglalink%20UAT_ODA.docx')/ListItemAllFields
-
-  //       //      const queryUrl = itemUrl;//`${this._webPartContext.pageContext.web.absoluteUrl}/_api/Web/GetFolderByServerRelativePath(decodedurl='/sites/spclassicdev/copied/Banglalink UAT_ODA')?$expand=Folders,Files,ListItemAllFields`;
-  //       //      this._webPartContext.spHttpClient.post(queryUrl, SPHttpClient.configurations.v1,spHttpClientOptions)
-  //       //      .then((response: SPHttpClientResponse) => {
-  //       //       console.log("moveFile",response);
-  //       //       response.json().then((x=>{
-  //       //         console.log("movefile_v",x);
-  //       //       }))
-  //       //      })
-             
-  //       //     const listItemPayload = {
-  //       //       // "__metadata": { "type": "SP.Data.YourListNameListItem" },
-  //       //       "ContentTypeId": contentTypeId
-  //       //     };
-  //       //     const listItemResponse = await this._webPartContext.spHttpClient.post(listItemUrl, SPHttpClient.configurations.v1, {
-  //       //       headers: {
-  //       //         "Accept": "application/json",
-  //       //         "Content-Type": "application/json",
-  //       //         "X-RequestDigest": this._webPartContext.pageContext.legacyPageContext.formDigestValue,
-  //       //         "X-HTTP-Method": "MERGE",
-  //       //         "If-Match": "*"
-  //       //       },
-  //       //       body: JSON.stringify(listItemPayload)
-  //       //     });
-      
-  //       //     if (listItemResponse.ok) {
-  //       //       return await listItemResponse.json().then((xtest=>{
-  //       //         console.log("xtest",xtest);
-  //       //       }))
-  //       //     } else {
-  //       //       console.log(`Error updating list item: ${listItemResponse.status}`);
-  //       //       return [];
-  //       //     }
-
-
-
-
-
-  //        return response;
-  //      })
-    
-  //      .catch(error => {
-  //        console.log(error);
-  //        console.log("error moving file");
-  //        return error;
-  //      });
-       
-  //   }
-  //   catch (error) {
-  //     console.log(error);
-  //     console.log("error in catch moving file");
-  //   }
-  // }
-  
-  // public async sendRequest(apiUrl,options){
-  //     //const spHttpClient = this._webPartContext.spHttpClient;
-  //     return await this._webPartContext.spHttpClient.fetch(apiUrl,SPHttpClient.configurations.v1,options)
-  //       .then(response => {
-  //         console.log("response.ok",response.ok);
-  //         if (!response.ok) {
-  //            return  response;
-  //         }else{
-  //           console.log("saved");
-  //           return response;
-  //         }
-  //         //resolve(response.json());
-  //       })
-  //       .catch(error => {
-  //         console.log("log catch error");
-  //         //reject(error);
-  //       });
-  //   };
-
-
-    // public async getRequiredFields(): Promise<any>{
-  //   try {
-  //     // const endpoint = `${this._docItemsUrl}/fields?$filter=Required%20eq%20true`;
-  //     // const endpoint = `${this._docItemsUrl}/fields?$filter=Hidden eq 'false'`;
-
-  //     const endpoint = `${this._docItemsUrl}/fields`;
-  //     const response = await this._webPartContext.spHttpClient.get(endpoint, SPHttpClient.configurations.v1)
-  //     .then((response: SPHttpClientResponse) =>{
-  //       if (response.ok){
-  //         return response.json();
-  //       }});
-  //     return response;
-  //   } catch (error) {
-  //     console.log(error);
-  //     return [];
-  //   }
-  // }
-  // public async moveFileByPath(srcPath: string, destPath: string, name: string, shouldOverWrite: boolean, keepBoth: boolean): Promise<void> {
-  //    srcPath = `/sites/spclassicdev/DropLibrary/${name}`;
-  //    destPath =`/sites/spclassicdev/copied/data`;
-    
-  //   //const endpoint = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/getFileByServerRelativePath('${srcPath}')/MoveTo(newPath='${destPath}/${name}',flags=${shouldOverWrite ? '1' : '0'},keepBoth=${keepBoth})`;
-  //   const endpoint = `${this._webPartContext.pageContext.web.absoluteUrl}/_api/web/getFileByServerRelativePath('${encodeURIComponent(srcPath)}')/MoveTo(newPath='${encodeURIComponent(destPath)}/${encodeURIComponent(name)}',flags=${shouldOverWrite ? '1' : '0'},keepBoth=${keepBoth})`;
-  //   try {
-  //     const response: SPHttpClientResponse = await this._webPartContext.spHttpClient.post(endpoint, SPHttpClient.configurations.v1, {});
-  //     if (response.ok) {
-  //       console.log('File moved successfully');
-  //     } else {
-  //       console.log('File move failed');
-  //     }
-  //   } catch (error) {
-  //     console.error('Error moving file:', error);
-  //   }
-  // }
 }

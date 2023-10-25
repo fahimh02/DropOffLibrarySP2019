@@ -1,14 +1,189 @@
 @import "~@microsoft/sp-office-ui-fabric-core/dist/sass/SPFabricCore.scss";
+
+
+//gg
+
+body {
+  font-family: "Segoe UI", "Segoe UI Web (West European)", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+/* Apply the CSS to select element */
+label, input[type="text"], input[type="password"], input[type="email"], textarea, select, button, input[type="checkbox"] {
+  width: 100%;
+  padding: 8px;
+  border-color: #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+
+.documentrow {
+  display: flex;
+  justify-content: space-between;
+  border: 1px solid #ccc;
+  margin: 10px 0;
+  padding: 10px;
+  background-color: #fff;
+  box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.documentdetails {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.documentname {
+  font-weight: 600;
+  font-size: 14px;
+  color : #353535;
+  display: flex;
+  align-items: center; /* Center the logo and text */
+}
+
+.documentname a {
+  text-decoration: none; /* Remove underlines from the link */
+  color: #333;
+}
+
+.documentname .logo {
+  width: 15px; /* Set the desired width for the logo */
+  height: 15px; /* Set the desired height for the logo */
+  margin-right: 10px; /* Add space between the logo and text */
+}
+
+.documentcaption {
+  color: #4d4a4a;
+}
+
+.documentactions {
+  display: flex;
+  align-items: center;
+  font-size: 12.5px
+}
+.checkbox {
+  margin-right: 5px; /* Adjust the margin as needed */
+}
+.label {
+  margin-right: 5px; /* Adjust the margin as needed */
+}
+
+/* Define a tooltip message for hover */
+.checkbox:hover::after {
+  content: "Move outside folder "; /* Replace with your message */
+  position: absolute;
+  background-color: #333;
+  color: #fff;
+  padding: 5px;
+  border-radius: 4px;
+  margin-left: 10px; /* Adjust the tooltip position */
+  display: none;
+}
+
+/* Show the tooltip message on hover */
+.checkbox:hover::after {
+  display: block;
+}
+
+.button {
+  background-color: #0078d4;
+  color: #fff;
+  border: none;
+  padding: 8px;
+  border-color: #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  margin-left: 5px;
+  cursor: pointer;
+  margin-bottom: inherit;
+}
+.dltbutton {
+  background-color: #c40941;
+  color: #fff;
+  border: none;
+  padding: 8px;
+  border-color: #ccc;
+  border-radius: 4px;
+  box-sizing: border-box;
+  margin-left: 5px;
+  cursor: pointer;
+  margin-bottom: inherit;
+}
+
+.dltbutton:hover {
+  background-color: #f40045;
+}
+
+.button:hover {
+  background-color: #005a9e;
+}
+
+.options-dropdown {
+  margin-right: 10px;
+}
+//ggend
+
 .rowcontainer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
 }
+// written on 09/10/2023
+.file_info {
+  display: flex;
+  align-items: center;
+}
 
+.file_info span {
+  font-weight: bold;
+  margin-right: 10px;
+}
+
+.file_link {
+  text-decoration: none;
+  color: #007bff;
+}
+
+.action_row {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.action_row label {
+  margin-right: 10px;
+  font-weight: bold;
+}
+
+.action_row ms-Dropdown {
+  margin-right: 10px;
+  padding: 5px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.action_button {
+  padding: 8px 16px;
+  background-color: #007bff;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action_button + .action_button {
+  margin-left: 10px;
+}
+// written on 09/10/2023
 .infocontainer {
   flex-grow: 1;
   margin-right: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  width: auto;
 }
 
 .buttoncontainer {

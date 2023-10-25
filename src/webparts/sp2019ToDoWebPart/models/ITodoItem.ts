@@ -43,6 +43,11 @@ interface ITodoItem {
   Category_x0020_of_x0020_Document:string;
   Project:string;
   Terms_x0020_of_x0020_Payment:string;
+  Review_x0020_Closed: string;
+  CurrentStatus:string;
+  ChecklistLink:string;
+  Status_x0020_CD:string
+
   
 
 }

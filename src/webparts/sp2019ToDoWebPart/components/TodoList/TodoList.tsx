@@ -10,10 +10,8 @@ import styles from './TodoList.module.scss';
 export default class TodoList extends React.Component<ITodoListProps, {}> {
   constructor(props: ITodoListProps) {
     super(props);
-
     this._onRenderCell = this._onRenderCell.bind(this);
   }
-
   public render(): JSX.Element {
     return (
       <FocusZone

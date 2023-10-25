@@ -139,85 +139,21 @@ export default class Todo extends React.Component<ITodoContainerProps, ITodoCont
               <div>Loading...</div>
             )}
             <div style={{ opacity: isLoading ? 0.4 : 1, pointerEvents: isLoading ? 'none' : 'auto'}}>
-            <TodoList items={this.state.todoItems}
+              <div className={styles.documentlist}>
+              <TodoList items={this.state.todoItems}
               onEditTodoItem={this._completeTodoItem}
               onDeleteTodoItem={this._deleteTodoItem} />
+              </div>
+            
               </div>
             </div>
           }
             
-          {/* {
-            !this._showPlaceHolder && !showDialog && this._permission && 
-            <div className={styles.todo}>
-              <div className={styles.topRow}>
-                <h2 className={styles.todoHeading}>Drop off library</h2>
-              </div>
-              {libraries ? (
-              <TodoForm list={libraries}  onAddTodoItem={this._createTodoItem} />
-
-            ) : (
-              <div>Loading...</div>
-            )}
-            <TodoList items={this.state.todoItems}
-              onEditTodoItem={this._completeTodoItem}
-              onDeleteTodoItem={this._deleteTodoItem} />
-            </div>
-            } */}
+        
         </Fabric>
-      // <Fabric>
-      //   {this._showPlaceHolder && this.props.webPartDisplayMode === DisplayMode.Edit &&
-      //     <ConfigurationView
-      //     icon={'ms-Icon--Edit'}
-      //     iconText='Drop off Library'
-      //     description='Upload files in a drop off library'
-      //     buttonLabel='Configure'
-      //     onConfigure={this._configureWebPart} />
-      //   }
-      //   {this._showPlaceHolder && this.props.webPartDisplayMode === DisplayMode.Read &&
-      //       <ConfigurationView
-      //         icon={'ms-Icon--Edit'}
-      //         iconText='Drop off Library'
-      //         description='Upload files in a drop off library. Edit this web part to start managing drop off library.' />
-      //   }
-      //   {!this._showPlaceHolder &&
-      //     <div className={styles.todo}>
-      //       <div className={styles.topRow}>
-      //         <h2 className={styles.todoHeading}>Drop off library</h2>
-      //       </div>
-      //       <TodoForm onAddTodoItem={this._createTodoItem} />
-      //       <TodoList items={this.state.todoItems}
-      //         onCompleteTodoItem={this._completeTodoItem}
-      //         onDeleteTodoItem={this._deleteTodoItem} />
-      //     </div>
-      //   }
-      // </Fabric>
+     
     );
   }
-  // handleMessage = (event) => {
-  //   if(this.state.showDialog){
-  //     if (event.source === this.iframeRef.contentWindow) {
-  //       const { action } = event.data;
-  
-  //       if (action === 'save') {
-  //         this.handleSave();
-  //       }
-  //     }
-
-  //   }
-   
-  // };
-  // handleSave = () => {
-  //   // Perform save operation here
-
-  //   // Close the dialog
-  //   this.closeDialog();
-  // };
-  // handleClick = () => {
-  //   this.setState({ showDialog: true });
-  // };
-  // closeDialog = () => {
-  //   this.setState({ showDialog: false });
-  // };
   private _configureWebPart(): void {
     this.props.configureStartCallback();
   }
@@ -253,18 +189,20 @@ export default class Todo extends React.Component<ITodoContainerProps, ITodoCont
     //console.log('Saving changes...');
     // Perform your logic to save the changes to SharePoint using SPHttpClient or any other appropriate method
   }
-  private async _completeTodoItem(todoItem: ITodoItem,libName:string): Promise<any> {
+
+  private async _completeTodoItem(todoItem: ITodoItem,libName:string,ismoveoutsideFolder:boolean): Promise<any> {
     try {
       this.setState({isLoading:true})
     const item : ITodoItem = await this.props.dataProvider.getDoc(todoItem.Id.toString());
     console.log("got item:",item);
     todoItem = item;
-    let x = await this.props.dataProvider.uploadItems(todoItem,libName,true);
+    let x = await this.props.dataProvider.uploadItems(todoItem,libName,ismoveoutsideFolder);
     if(x.Id!=0){
       return  this.props.dataProvider.deleteDoc(todoItem).then(
           (items: ITodoItem[]) => {
            // console.log("getDocs,",items);
             const newItems = update(this.state.todoItems, { $set: items });
+
             this.setState({isLoading:false});
             this.setState({ todoItems: newItems });
           });
