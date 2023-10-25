@@ -2,6 +2,9 @@
 
 Demo solution demonstrating SharePoint Framework capabilities available in SharePoint Server 2019.
 
+using 
+Node -v 10.15.0 (Currently using 64-bit executable)
+
 Solution contains two components:
 
 ## To do web part
