@@ -46,9 +46,9 @@ interface ITodoItem {
   Review_x0020_Closed: string;
   CurrentStatus:string;
   ChecklistLink:string;
-  Status_x0020_CD:string
+  Status_x0020_CD:string;
+  IsMovePermission:boolean;
 
-  
 
 }
 

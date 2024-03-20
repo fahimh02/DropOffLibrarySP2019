@@ -13,6 +13,7 @@ import * as JQuery from 'jquery';
 import { Web ,sp,Folder ,FolderAddResult} from "@pnp/sp";
 import { Item, ItemAddResult, ItemUpdateResult } from '@pnp/sp';
 import { resultContent } from 'office-ui-fabric-react/lib-es2015/components/pickers/PeoplePicker/PeoplePicker.scss';
+import { filter } from 'lodash';
 
 //import { Web ,sp,Folder} from '@pnp/sp/presets/all';
 export default class SharePointDataProvider implements ITodoDataProvider {
@@ -100,11 +101,8 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     return null;
   }
   public async uploadItems(item:ITodoItem, selectedLibrary:string, isMoveOutsideFolder:boolean): Promise<ITodoItem>{
-    console.log("ismoveoutside folder ",isMoveOutsideFolder);
-   
-    console.log("submitted item to move :", item);
-    
-    console.log("from muploaditem slelected lib ", selectedLibrary);
+    //var IsW = await this.isOwner(this._webPartContext);
+
 
     if(selectedLibrary.toLowerCase().includes("automotive") || selectedLibrary.toLowerCase().includes("b5f11715-9d34-416c-9d0c-bd055ee95400")){
       if(isMoveOutsideFolder){
@@ -928,6 +926,12 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     return await this._getLists();
   };
   public async getPermissions():Promise<boolean>{
+    // var isV = await this.isVisitor(this._webPartContext);
+    // var isW = await this.isOwner(this._webPartContext);
+   
+    // console.log("IV",isV);
+    // console.log("IW",isW);
+
      return await this.isUserSiteMemberWithEditPermissions(this._webPartContext);
    //  return x;
   }
@@ -943,9 +947,8 @@ export default class SharePointDataProvider implements ITodoDataProvider {
         const groups = user.Groups;
         console.log("Current user groups ",groups);
         const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("member") ||   item.Title.toLowerCase().includes("owner") || item.Title.toLowerCase().includes("visitor"))[0];
-       
+        console.log("after filter in ismem", filteredList);
         if(filteredList!=undefined){
-          console.log("Current user does not have permission ")
           return true;
         }
 
@@ -957,6 +960,71 @@ export default class SharePointDataProvider implements ITodoDataProvider {
     } catch (error) {
       console.log('Error:', error);
       return false;
+    }
+  };
+  public  isVisitor = async (context) => {
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    var flag= false;
+    try {
+
+      const response: SPHttpClientResponse = await context.spHttpClient.get(
+         `${siteUrl}/_api/web/CurrentUser?$expand=Groups&$select=Id,Groups/Id,Groups/Title,Groups/CanEdit`,SPHttpClient.configurations.v1);
+      //  `${siteUrl}/_api/web/RoleAssignments?$expand=Member&$filter=Member/LoginName eq '${currentUserLoginName}' and (RoleDefinitionBindings/Name eq 'Contribute' or RoleDefinitionBindings/Name eq 'Edit' )  `, SPHttpClient.configurations.v1);
+      if (response.ok) {
+        const user = await response.json();
+        const groups = user.Groups;
+        console.log("Current user groups ",groups);
+        const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("customer documents visitors"))[0];
+        console.log("after filter in isv" ,filteredList);
+        if(filteredList!=undefined){        
+          console.log("Isvisitor: " ,filteredList);
+          flag= true;
+          return flag;
+        }else{
+          console.log("Is Visitor: no data filtered " ,);
+          return flag;
+        }
+      } else {
+        console.log(`Error: ${response.status}`);
+        return flag;
+      }
+    } catch (error) {
+      console.log('Error:', error);
+      return flag;
+    }
+  };
+  public async isOwner(context)
+  {
+    var flag = false;
+    const siteUrl = context.pageContext.web.absoluteUrl;
+    try {
+
+      const response: SPHttpClientResponse = await context.spHttpClient.get(
+         `${siteUrl}/_api/web/CurrentUser?$expand=Groups&$select=Id,Groups/Id,Groups/Title,Groups/CanEdit`,SPHttpClient.configurations.v1);
+      //  `${siteUrl}/_api/web/RoleAssignments?$expand=Member&$filter=Member/LoginName eq '${currentUserLoginName}' and (RoleDefinitionBindings/Name eq 'Contribute' or RoleDefinitionBindings/Name eq 'Edit' )  `, SPHttpClient.configurations.v1);
+      if (response.ok) {
+        const user = await response.json();
+        const groups = user.Groups;
+        console.log("Current user groups ",groups);
+        const filteredList =groups.filter(item =>  item.Title.toLowerCase().includes("contract management owners"))[0];
+        console.log("after filter in isw" ,filteredList);
+       //console.log("isOwner: " ,filteredList);
+        if(filteredList!=undefined){
+          console.log("IsOwner: " ,filteredList);
+          flag= true;
+          return flag;
+        }else{
+          console.log("IsOwner: no data filtered " ,);
+          return flag;
+        }
+        
+      } else {
+        console.log(`Error: ${response.status}`);
+        return flag;
+      }
+    } catch (error) {
+      console.log('Error:', error);
+      return flag;
     }
   };
   private async checkGroupMembership(groupName: string): Promise<boolean> {
@@ -998,41 +1066,54 @@ export default class SharePointDataProvider implements ITodoDataProvider {
   public getDoc(itemId:string): Promise<ITodoItem> {
     return this._getDoc(itemId);
   }
-  private _getDocs(requester: SPHttpClient): Promise<ITodoItem[]> {
-   
+  private async _getDocs(requester: SPHttpClient): Promise<ITodoItem[]> {
+   var res = await this.isOwner(this._webPartContext);
+   console.log("_getDocs is owner"+ this._webPartContext.pageContext.user.displayName, res);
+
     var sortOrder = "desc";
+    var queryString: string =`?$select=Title,HasUniqueRoleAssignments,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title,File/LinkingUrl&$expand=File&$expand=Author/Title&$top=3000&$orderby=Created%20desc`;
+   
+    if(!res){
+       queryString =`?$select=Title,HasUniqueRoleAssignments,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title,File/LinkingUrl&$expand=File&$expand=Author/Title&$filter=Author/Title eq '${this._webPartContext.pageContext.user.displayName}'&$top=3000&$orderby=Created%20desc`;
+    }
     //const queryString: string =`?$select=Title,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Created `+sortOrder;
    // const queryString: string =`?$select=Title,Responsible_x0020_CSC,ResponsibleKAM,Country,AMANN_x0020_Company,Priority,time_x0020_customer,Received,Incoterms_x0020__x0028_currently_x0029_,Terms_x0020_of_x0020_payment,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Comments,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Created `+sortOrder;
-    const queryString: string =`?$select=Title,HasUniqueRoleAssignments,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Modified%20desc`;
-    //const queryString: string =`?$select=*&$top=3000&$orderby=Created `+sortOrder;
+   
     const queryUrl: string = this._listItemsUrl + queryString;
     // const requestOptions: ISPHttpClientOptions = {
     //   headers: {
     //     'Accept': 'application/octet-stream'
     //   }
     // };
-    return requester.get(queryUrl, SPHttpClient.configurations.v1)
+    return await requester.get(queryUrl, SPHttpClient.configurations.v1)
       .then((response: SPHttpClientResponse) => {
         return response.json();
       })
       .then((json: { value: ITodoItem[] }) => {
         return json.value.map((task: ITodoItem) => {
           task.DefaultEditUrl = `${this._webPartContext.pageContext.web.absoluteUrl}/_layouts/15/listform.aspx?PageType=6&ListId=${this.selectedList.Id}&ID=${task.Id}&RootFolder=*`;
+          if(res!= undefined && res != null && res==true){
+            task.IsMovePermission = true;
+          }else{
+            task.IsMovePermission= false;
+          }
           return task;
         });
       });
   }
   private _getDoc(itemId: string): Promise<ITodoItem> {
-    const queryString: string =`?$select=Title,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$top=3000&$orderby=Modified%20desc`;
-   
+    const queryString: string =`(${itemId})?$select=Title,Terms_x0020_of_x0020_Payment0,Status_x0020_CD,StartDate,Review_x0020_Closed,Responible_x0020_Legal,ChecklistLink,CurrentStatus,Project,SAP_x0020_Kundennummer,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Category_x0020_of_x0020_Document,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File`;
+   console.log("Calling culprit: :", itemId);
     //const queryString: string =`?$select=Title,Project,SAP_x0020_Kundennummer,Category_x0020_of_x0020_Document,OData__Comments,Responsible_x0020_CSC0Id,Responsible_x0020_CSC0StringId,Customer_x0020_Classification,Responsible_x0020_CSCId,Responsible_x0020_CSCStringId,ResponsibleKAMStringId,ResponsibleKAMId,Customer0,Turnover_x0020__x0028_Prev_x002e_Year_x0029_,Responible_x0020_Legal,Country,AMANN_x0020_Company,Priority,Deadline_x0020_Customer,Received0,Incoterms_x0020__x0028_current_x0029_,Label0,Trunover_x0020__x0028_Prev_x002e_Year_x002d_YTD_x0029_,Customer_x0020_Classification,ID,Created,UniqueId,FileRef,FileDirRef,LinkFilename,LinkFilename2,ServerUrl,FileLeafRef,ContentTypeId,Author/Title,Editor/Title&$expand=Editor/Title&expand=Modified/ID,Modified/Title&$expand=Author/Title,File/LinkingUrl&$expand=File&$filter=Id eq '${itemId}'`;
     //const queryString: string =`?$select=*&$top=3000&$orderby=Created `+sortOrder;
     const queryUrl: string = this._listItemsUrl + queryString;
     return this._webPartContext.spHttpClient.get(queryUrl, SPHttpClient.configurations.v1)
       .then((response: SPHttpClientResponse) => {
+        console.log("culprit : ",response);
         return response.json()
         .then((dataitm =>{
-          let itm:ITodoItem = dataitm.value[0];
+          console.log("culprit : ",dataitm)
+          let itm:ITodoItem = dataitm;
           return itm;
         }))
       });
@@ -1040,7 +1121,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
   public createDoc(documents: File[]): Promise<ITodoItem[]> {
     return this
       ._createDoc(documents, this.webPartContext.spHttpClient)
-      .then(_ => {
+      .then(_resp => {
         return this.getDocs();
       });
   }
@@ -1056,17 +1137,55 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       },
       body: fileBuffer,
     };
-    //const body = new FormData();
-    let url = this._docItemsUrl + `/RootFolder/Files/Add(url='${file.name}', overwrite=true)`;
-        // body.append('@data.type', this._selectedList.EntityTypeName);
-        // body.append('Title', file.name);
-        // body.append('file', file);
+    let url = this._docItemsUrl + `/RootFolder/Files/Add(url='${file.name}', overwrite=true)?$expand=ListItemAllFields`;
         return client.post(
           url,
           SPHttpClient.configurations.v1,
           spOpts
-        ); 
+        );
   }
+
+
+
+  private _removePermissions(documentName: string, client: SPHttpClient): Promise<void> {
+    // Form the URL to break role inheritance for the specific document
+    const breakRoleInheritanceUrl = `${this._docItemsUrl}/RootFolder/Files('${documentName}')/ListItemAllFields/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`;
+  
+    const spOpts: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    };
+  
+    // Break role inheritance for the specific document
+    return client.post(breakRoleInheritanceUrl, SPHttpClient.configurations.v1, spOpts)
+      .then(() => {
+        console.log(`Removed unique permissions for ${documentName}`);
+      });
+  }
+  
+  private _inheritPermissions(documentName: string, client: SPHttpClient): Promise<void> {
+    const editPermissionRoleDefId = 1073741827;
+    const siteOwnersPrincipalId = 4;
+    // Form the URL to assign permissions to the "Site Owners" group for the specific document
+    const assignPermissionsUrl = `${this._docItemsUrl}/RootFolder/Files('${documentName}')/ListItemAllFields/roleassignments/addroleassignment(principalid=${siteOwnersPrincipalId}, roledefid=${editPermissionRoleDefId})`;
+  
+    const spOpts: ISPHttpClientOptions = {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+    };
+  
+    // Inherit permissions for the specific document from the library
+    return client.post(assignPermissionsUrl, SPHttpClient.configurations.v1, spOpts)
+      .then(() => {
+        console.log(`Inherited permissions for ${documentName} from the library`);
+      });
+  }
+  
+ 
   public deleteDoc(itemDeleted: ITodoItem): Promise<ITodoItem[]> {
     return this
       ._deleteDoc(itemDeleted, this.webPartContext.spHttpClient)
@@ -1138,7 +1257,9 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       });
   }
   public getItems(): Promise<ITodoItem[]> {
+
     return this._getItems(this.webPartContext.spHttpClient);
+
   }
   public createItem(title: string): Promise<ITodoItem[]> {
     return this
@@ -1187,6 +1308,7 @@ export default class SharePointDataProvider implements ITodoDataProvider {
       { body: JSON.stringify(body) }
     );
   }
+  
   private _deleteItem(item: ITodoItem, client: SPHttpClient): Promise<SPHttpClientResponse> {
     const itemDeletedUrl: string = `${this._listItemsUrl}(${item.Id})`;
 

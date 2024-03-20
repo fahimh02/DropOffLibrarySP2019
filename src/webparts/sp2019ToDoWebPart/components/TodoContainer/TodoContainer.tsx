@@ -127,7 +127,7 @@ export default class Todo extends React.Component<ITodoContainerProps, ITodoCont
             // , opacity: isLoading ? 0.5 : 1, pointerEvents: isLoading ? 'none' : 'auto'
             
             
-            !this._showPlaceHolder && !showDialog && this._permission && 
+            !this._showPlaceHolder && !showDialog && 
             <div className={styles.todo}>
               <div className={styles.topRow}>
                 <h2 className={styles.todoHeading}>Drop off library</h2>
@@ -192,10 +192,11 @@ export default class Todo extends React.Component<ITodoContainerProps, ITodoCont
 
   private async _completeTodoItem(todoItem: ITodoItem,libName:string,ismoveoutsideFolder:boolean): Promise<any> {
     try {
+      console.log("MOving item:",todoItem);
       this.setState({isLoading:true})
-    const item : ITodoItem = await this.props.dataProvider.getDoc(todoItem.Id.toString());
-    console.log("got item:",item);
-    todoItem = item;
+   // const item : ITodoItem = await this.props.dataProvider.getDoc(todoItem.Id.toString());
+    //console.log("got item:",item);
+    //todoItem = item;
     let x = await this.props.dataProvider.uploadItems(todoItem,libName,ismoveoutsideFolder);
     if(x.Id!=0){
       return  this.props.dataProvider.deleteDoc(todoItem).then(

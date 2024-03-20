@@ -86,7 +86,10 @@ label, input[type="text"], input[type="password"], input[type="email"], textarea
 .checkbox:hover::after {
   display: block;
 }
+.moveCSS {
+  display: flex;
 
+}
 .button {
   background-color: #0078d4;
   color: #fff;

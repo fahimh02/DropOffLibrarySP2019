@@ -9,3 +9,14 @@ Review
 
 After moving a file, it kees loading
 Save file with Division value
+
+
+
+20/03/2024
+
+1. after each move , automotive is getting selected auto and check the look and feel of the dropdown
+2. title length needs to decrease in items in the talbe
+3. document still cus doc au content type ,
+4. without refreshing the browser : customer info not carry forward
+5. upload form should have the mendatory fields with item upload
+6. Move button should validate the required data 

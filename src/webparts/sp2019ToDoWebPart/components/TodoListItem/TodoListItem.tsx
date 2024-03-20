@@ -58,23 +58,30 @@ export default class TodoListItem extends React.Component<ITodoListItemProps, {}
       <div className={css(styles.documentdetails)}>
           <div className={css(styles.documentname)}>
               <img className={styles.logo} src={TodoListItem.GetIconPath(TodoListItem.getFileExtension(this.props.item.LinkFilename))} alt="Logo"/>
-              <a href={this.props.item.ServerUrl} target="_blank">{this.minimizeText(this.props.item.LinkFilename, 35)}</a>
+              <a href={this.props.item.ServerUrl} target="_blank">{this.minimizeText(this.props.item.LinkFilename, 32)}</a>
+              
           </div>
           <div className="document-caption">{this.props.item.Customer0}</div>
       </div>
       <div className={css(styles.documentactions)}>
-      <Dropdown
-      id={htmlid}
-      options={this.list}
-      className={css(styles['dropdown'])}
-      defaultSelectedKey="Please select.."
-      disabled={false}
-      multiSelect={false}
-      placeHolder="Select division"
-      required={true}
-      onChanged={(event, option) => this.handleDropdownChange(event, option, this.props.item)}
-    />
-          <input
+      
+          
+          
+         {
+         this.props.item.IsMovePermission && 
+          <div className={css(styles.moveCSS)} >
+            <Dropdown
+              id={htmlid}
+              options={this.list}
+              className={css(styles['dropdown'])}
+              defaultSelectedKey="Please select.."
+              disabled={false}
+              multiSelect={false}
+              placeHolder="Select division"
+              required={true}
+              onChanged={(event, option) => this.handleDropdownChange(event, option, this.props.item)}
+            />
+            <input
               type="checkbox"
               id={checkboxId}
               className={css(styles.checkbox)}
@@ -83,15 +90,20 @@ export default class TodoListItem extends React.Component<ITodoListItemProps, {}
             />
           <button className={css(styles.button)} onClick={(): void => this._handleEditModalItem(this.props.item)}>Edit</button>
           <button className={css(styles.button)} onClick={(): void => this.handleDocEdit(this.props.item)}>Move</button>
-          <button className={css(styles.dltbutton)} onClick={this._handleDeleteClick}>Delete</button>
-          
+          <button className={css(styles.dltbutton)} onClick={this._handleDeleteClick}>Delete</button></div>
+         }
+         {
+         !this.props.item.IsMovePermission && 
+         <div className={css(styles.moveCSS)}>
+         <button className={css(styles.button)} onClick={(): void => this._handleEditModalItem(this.props.item)}>Edit</button></div>
+         }
       </div>
   </div>
 
     );
   }
   private _handleEditModalItem(item:ITodoItem) {
-    window.open(item.DefaultEditUrl, '_blank');
+    window.open(item.DefaultEditUrl, '_self');
   }
   private _handleDeleteClick(event: React.MouseEvent<HTMLButtonElement>) {
     Swal({
